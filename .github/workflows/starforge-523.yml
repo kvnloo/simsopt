@@ -1,0 +1,66 @@
+name: SIMSOPT 523 native diagnostic
+
+'on':
+  push:
+    branches: [probe/simsopt-523-native-20260924]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simsopt-523-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostic:
+    if: github.repository == 'kvnloo/simsopt'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      JAX_PLATFORMS: cpu
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libboost-dev
+      - name: Build the checked-out native package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostic-results
+          git rev-parse HEAD | tee diagnostic-results/commit.txt
+          git submodule status --recursive > diagnostic-results/submodules.txt
+          python -m pip install --verbose . 2>&1 | tee diagnostic-results/build.log
+          python -m pip freeze > diagnostic-results/packages.txt
+      - name: Run contract controls and history-independence regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python diagnostics/simsopt_523.py 2>&1 | tee diagnostic-results/native-tests.log
+      - name: Explain diagnostic status
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## SIMSOPT #523 native diagnostic'
+            echo 'Fork-only probe; no production changes or VMEC/MPI/GPU execution.'
+            echo 'A history-independence assertion failure with passing low-level controls reproduces the suspected cache defect.'
+            echo 'Build/import failures are infrastructure failures, not reproduction evidence.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simsopt-523-native-evidence
+          path: diagnostic-results/
+          if-no-files-found: warn
