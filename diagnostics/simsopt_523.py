@@ -71,7 +71,7 @@ class TestLowLevelContract(unittest.TestCase):
 
 
 def make_field():
-    analytic = BoozerAnalytic(.1, 1.0, 0, 1.0, 1.0, .4)
+    analytic = BoozerAnalytic(.1, 1.0, 0, 1.0, 1.0, .4)\n    # The native InterpolatedBoozerField calls through the C++ virtual interface.\n    # Python subclasses do not override that native virtual, so use the C++\n    # trampoline that forwards virtual calls back to the Python implementation.\n    analytic = sopp.BoozerMagneticFieldPythonTrampoline(analytic)
     return InterpolatedBoozerField(
         analytic, 3, (.1, 1.0, 4), (0., np.pi, 4), (0., 2*np.pi, 4),
         extrapolate=True, nfp=1, stellsym=True,
