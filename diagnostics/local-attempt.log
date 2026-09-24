@@ -1,0 +1,7 @@
+NATIVE TESTS NOT RUN: required SIMSOPT import failed: No module named 'simsoptpp'
+EXIT_CODE=2
+
+Python syntax compilation passed locally. Package installation could not reach
+its package index because DNS/network access was unavailable in this container.
+This is an environment limitation, not evidence that the native regression passes
+or fails. Use the fork's native diagnostic workflow for runtime results.
