@@ -30,6 +30,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Check diagnostic syntax before building
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostic-results
+          git rev-parse HEAD | tee diagnostic-results/commit.txt
+          python -m py_compile diagnostics/simsopt_523.py
       - name: Install build prerequisites
         run: |
           sudo apt-get update
@@ -38,8 +45,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p diagnostic-results
-          git rev-parse HEAD | tee diagnostic-results/commit.txt
           git submodule status --recursive > diagnostic-results/submodules.txt
           python -m pip install --verbose . 2>&1 | tee diagnostic-results/build.log
           python -m pip freeze > diagnostic-results/packages.txt
@@ -54,9 +59,10 @@ jobs:
         run: |
           {
             echo '## SIMSOPT #523 native diagnostic'
-            echo 'Fork-only probe; no production changes or VMEC/MPI/GPU execution.'
-            echo 'A history-independence assertion failure with passing low-level controls reproduces the suspected cache defect.'
-            echo 'Build/import failures are infrastructure failures, not reproduction evidence.'
+            echo 'Fork-only analytic probe; no production changes or VMEC/MPI/GPU execution.'
+            echo 'Inspect the individual assertions: workflow failure alone is not reproduction evidence.'
+            echo 'A history-independence failure after valid field evaluations, with passing low-level controls, is evidence for the cache defect.'
+            echo 'Syntax, build, import, and field-setup errors are diagnostic failures.'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()

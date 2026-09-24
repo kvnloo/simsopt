@@ -1,9 +1,8 @@
 """Fork-only native diagnostic for hiddenSymmetries/simsopt#523.
 
-The low-level tests preserve the existing output-buffer contract. The field
-regression asks only for history independence; it does not pick an extrapolation
-policy. No VMEC, MPI, GPU, or external equilibrium files are required.
-AI-assisted test preparation; execution status belongs in the accompanying log.
+AI-assisted diagnostic. Preserve the low-level output-buffer contract and test
+field-history independence without choosing an extrapolation policy. No VMEC,
+MPI, GPU, or external equilibrium files are needed for this analytic probe.
 """
 import importlib.metadata
 import platform
@@ -16,7 +15,7 @@ try:
     import simsoptpp as sopp
     from simsopt.field.boozermagneticfield import BoozerAnalytic, InterpolatedBoozerField
 except ImportError as exc:
-    print(f"NATIVE TESTS NOT RUN: required SIMSOPT import failed: {exc}", file=sys.stderr)
+    print(f"NATIVE TESTS NOT RUN: SIMSOPT import failed: {exc}", file=sys.stderr)
     raise SystemExit(2) from exc
 
 
@@ -71,38 +70,46 @@ class TestLowLevelContract(unittest.TestCase):
 
 
 def make_field():
-    analytic = BoozerAnalytic(.1, 1.0, 0, 1.0, 1.0, .4)\n    # The native InterpolatedBoozerField calls through the C++ virtual interface.\n    # Python subclasses do not override that native virtual, so use the C++\n    # trampoline that forwards virtual calls back to the Python implementation.\n    analytic = sopp.BoozerMagneticFieldPythonTrampoline(analytic)
-    return InterpolatedBoozerField(
+    analytic = BoozerAnalytic(.1, 1.0, 0, 1.0, 1.0, .4)
+    field = InterpolatedBoozerField(
         analytic, 3, (.1, 1.0, 4), (0., np.pi, 4), (0., 2*np.pi, 4),
         extrapolate=True, nfp=1, stellsym=True,
     )
+    # Keep the Python-defined field alive as well as its C++ base object.
+    # The existing binding already supplies the virtual-method trampoline.
+    return analytic, field
 
 
 def outside_outcome(field):
     field.set_points(np.array([[1.01, .4, .2]]))
     try:
-        # A copy is essential: these observations must not alias the live cache.
+        # Copy observations so they cannot alias the mutable cache.
         return ("value", np.array(field.modB(), copy=True))
     except RuntimeError as exc:
-        return ("error", type(exc).__name__)
+        return ("error", type(exc).__name__, str(exc))
 
 
 class TestCachedFieldHistory(unittest.TestCase):
     def test_same_outside_point_is_independent_of_previous_point(self):
-        field = make_field()
+        analytic, field = make_field()
+        # Validate Python virtual dispatch before attempting the regression.
+        analytic.set_points(np.array([[.25, .4, .2]]))
+        np.testing.assert_allclose(
+            analytic.modB(), [[1.0 + .1 * np.sqrt(.5) * np.cos(.4)]],
+            rtol=0., atol=1e-12,
+        )
+        print("Analytic source sanity check passed", flush=True)
         snapshots = []
         outcomes = []
         for s in (.25, .75):
             field.set_points(np.array([[s, .4, .2]]))
             snapshots.append(np.array(field.modB(), copy=True))
             outcomes.append(outside_outcome(field))
-        # A broken test setup must not be mistaken for reproducing issue #523.
         self.assertTrue(all(np.isfinite(x).all() for x in snapshots))
         self.assertFalse(np.allclose(snapshots[0], snapshots[1]))
         print("Primed in-domain values:", [x.tolist() for x in snapshots], flush=True)
         print("Repeated outside-point outcomes:", [
-            (kind, value.tolist() if kind == "value" else value)
-            for kind, value in outcomes
+            (x[0], x[1].tolist()) if x[0] == "value" else x for x in outcomes
         ], flush=True)
         self.assertEqual(outcomes[0][0], outcomes[1][0])
         if outcomes[0][0] == "error":
